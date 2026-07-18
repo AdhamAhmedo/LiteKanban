@@ -28,12 +28,11 @@ Download `index.html` from this repo and double-click it. It opens in your defau
 If GitHub Pages is enabled for this repo, you can open the board directly from a URL and bookmark it, without downloading anything:
 `https://YOUR-USERNAME.github.io/kanvas/`
 
-## Data & privacy
+## 🔒 Data & privacy
 
-All board data is stored locally in your browser via `localStorage`. Nothing is sent to a server. This also means:
-- Your board is tied to the specific browser/device you use it on.
-- Clearing your browser data will clear your board — consider that before doing a "clear all site data" cleanup.
-- There is currently no built-in export/sync feature. (Open an issue if you'd like one — it's a reasonable thing to add.)
+All board data is stored locally in your browser via `localStorage`. Nothing is sent to a server. This also means your board is tied to the specific browser/device you use it on — clearing your browser data will clear your board.
+
+To move a board between devices or share it with someone else, use the **Export** button in the top bar to download it as a `.json` file, then send that file however you like. The other person opens LiteKanban and clicks **Import** to load your exact board — columns, tasks, tags, due dates, and subtasks all included.
 
 ## Tech
 
