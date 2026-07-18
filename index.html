@@ -219,8 +219,11 @@
     .task:hover .task-menu-wrap { opacity: 1; }
     .task-menu-wrap {
       position: absolute;
-      top: 5px;
-      right: 5px;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
       opacity: 0;
       transition: opacity 0.15s;
       z-index: 2;
@@ -230,10 +233,31 @@
       border: none;
       color: #fff;
       cursor: pointer;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 16px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 15px;
       line-height: 1;
+    }
+    .task-done-indicator {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2e7d32;
+      color: #fff;
+      font-size: 14px;
+      box-shadow: 0 0 0 2px rgba(46,46,62,0.8);
+    }
+    .task.task-done {
+      border-left-color: #4caf50;
+    }
+    .task.task-done .task-text {
+      opacity: 0.9;
+    }
+    .task.task-done .task-text::before {
+      content: "";
     }
     .task-menu-btn:hover { background: rgba(0,0,0,0.5); }
     .task-menu-dropdown {
@@ -359,27 +383,42 @@
     }
     #popup .checklist-item .remove-cl { background: #555; color: #fff; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
     #popup .add-checklist-btn { background: #444; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 4px; }
-    #popup, #confirmModal {
+    #popup, #confirmModal, #promptModal {
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0,0,0,0.72);
       display: none;
       justify-content: center;
       align-items: center;
       z-index: 10;
     }
-    #popup.show, #confirmModal.show {
+    #popup.show, #confirmModal.show, #promptModal.show {
       display: flex;
       animation: fadeIn 0.2s ease-out;
     }
-    #popup-content, #confirmBox {
+    #popup-content, #confirmBox, #promptBox {
       background: #2e2e3e;
-      padding: 20px;
-      border-radius: 8px;
-      width: 320px;
+      padding: 22px;
+      border-radius: 14px;
+      width: 360px;
       max-width: 95vw;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
       animation: slideIn 0.2s ease-out;
+    }
+    #promptBox input {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 10px;
+      border: 1px solid #555;
+      border-radius: 8px;
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 14px;
+    }
+    #promptBox input:focus {
+      outline: none;
+      border-color: var(--accent);
     }
     #popup textarea {
       width: 100%;
@@ -419,13 +458,28 @@
       align-items: center;
       gap: 8px;
     }
-    #toast.show { display: flex; }
+    #toast.show { display: flex; flex-wrap: wrap; gap: 12px; }
     #toast button {
       background: transparent;
       color: #81c784;
       border: none;
       cursor: pointer;
       text-decoration: underline;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(129,199,132,0.12);
+    }
+    .undo-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .undo-list button {
+      background: rgba(129,199,132,0.16);
+      color: #a5d6a7;
+      border: 1px solid rgba(129,199,132,0.28);
+      text-decoration: none;
     }
     .color-circle {
       width: 24px;
@@ -780,7 +834,20 @@
     </div>
   </div>
 
-  <div id="toast">Deleted. <button type="button" id="undoBtn">Undo</button></div>
+  <div id="promptModal" aria-hidden="true">
+    <div id="promptBox">
+      <p id="promptMessage">Enter a value</p>
+      <input type="text" id="promptInput" placeholder="Enter text..." aria-label="Prompt input" />
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn" type="button" id="promptOk">OK</button>
+        <button class="btn cancel" type="button" id="promptCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast">Deleted.
+    <div id="undoList" class="undo-list"></div>
+  </div>
 
   <div id="backgroundModal" aria-hidden="true">
     <div class="modal-inner">
@@ -1081,6 +1148,7 @@
       color: t.color || "#444",
       tags: Array.isArray(t.tags) ? t.tags : [],
       dueDate: t.dueDate && typeof t.dueDate === "string" ? t.dueDate : null,
+      done: !!t.done,
       subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(function (s) {
         return { id: s.id || id(), text: s.text || "", done: !!s.done };
       }) : []
@@ -1095,13 +1163,22 @@
   const popup = document.getElementById("popup");
   const taskText = document.getElementById("taskText");
   const toast = document.getElementById("toast");
+  const undoList = document.getElementById("undoList");
   const confirmModal = document.getElementById("confirmModal");
   const confirmMessage = document.getElementById("confirmMessage");
+  const promptModal = document.getElementById("promptModal");
+  const promptMessage = document.getElementById("promptMessage");
+  const promptInput = document.getElementById("promptInput");
+  const promptOk = document.getElementById("promptOk");
+  const promptCancel = document.getElementById("promptCancel");
 
   let currentColumnId = null;
   let editingTask = null;
   let confirmCallback = null;
+  let confirmNoCallback = null;
   let selectedColor = "#444";
+  let undoQueue = [];
+  let undoInterval = null;
   let lastDeleted = null;
   let columnMenuOpen = null;
   let taskMenuOpen = null;
@@ -1505,17 +1582,57 @@
     taskText.value = "";
   }
 
-  function showConfirm(message, callback) {
+  function showConfirm(message, callback, cancelCallback) {
     confirmMessage.textContent = message;
     confirmModal.classList.add("show");
     confirmModal.setAttribute("aria-hidden", "false");
     confirmCallback = callback;
+    confirmNoCallback = cancelCallback || null;
   }
 
   function hideConfirm() {
     confirmModal.classList.remove("show");
     confirmModal.setAttribute("aria-hidden", "true");
     confirmCallback = null;
+    confirmNoCallback = null;
+  }
+
+  function showPrompt(message, placeholder, defaultValue, callback) {
+    promptMessage.textContent = message;
+    promptInput.value = defaultValue || "";
+    promptInput.placeholder = placeholder || "";
+    promptModal.classList.add("show");
+    promptModal.setAttribute("aria-hidden", "false");
+    promptInput.focus();
+    function submitPrompt() {
+      var value = promptInput.value;
+      hidePrompt();
+      callback(value);
+    }
+    function cancelPrompt() {
+      hidePrompt();
+      callback(null);
+    }
+    promptOk.onclick = submitPrompt;
+    promptCancel.onclick = cancelPrompt;
+    promptInput.onkeydown = function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitPrompt();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelPrompt();
+      }
+    };
+  }
+
+  function hidePrompt() {
+    promptModal.classList.remove("show");
+    promptModal.setAttribute("aria-hidden", "true");
+    promptInput.onkeydown = null;
+    promptOk.onclick = null;
+    promptCancel.onclick = null;
   }
 
   function closeColumnMenu() {
@@ -1538,47 +1655,85 @@
     if (confirmCallback) confirmCallback();
     hideConfirm();
   });
-  document.getElementById("confirmNo").addEventListener("click", hideConfirm);
+  document.getElementById("confirmNo").addEventListener("click", function () {
+    if (confirmNoCallback) confirmNoCallback();
+    hideConfirm();
+  });
 
-  function showToast() {
-    toast.classList.add("show");
-    setTimeout(function () {
-      toast.classList.remove("show");
+  function addUndoEntry(entry) {
+    entry.uid = id();
+    entry.expiresAt = Date.now() + 5000;
+    entry.timeoutId = setTimeout(function () {
+      removeUndoEntry(entry.uid);
     }, 5000);
+    undoQueue.push(entry);
+    if (!undoInterval) {
+      undoInterval = setInterval(renderUndoToast, 250);
+    }
+    renderUndoToast();
   }
 
-  function undoDelete() {
-    if (!lastDeleted) return;
+  function removeUndoEntry(uid) {
+    var idx = undoQueue.findIndex(function (item) { return item.uid === uid; });
+    if (idx === -1) return;
+    clearTimeout(undoQueue[idx].timeoutId);
+    undoQueue.splice(idx, 1);
+    if (!undoQueue.length) {
+      clearInterval(undoInterval);
+      undoInterval = null;
+      toast.classList.remove("show");
+    }
+    renderUndoToast();
+  }
+
+  function renderUndoToast() {
+    if (!undoQueue.length) {
+      toast.classList.remove("show");
+      undoList.innerHTML = "";
+      return;
+    }
+    toast.classList.add("show");
+    undoList.innerHTML = "";
+    undoQueue.forEach(function (item) {
+      var remaining = Math.max(0, Math.ceil((item.expiresAt - Date.now()) / 1000));
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = item.type === "task" ? "Undo task (" + remaining + "s)" : "Undo column (" + remaining + "s)";
+      btn.onclick = function () { undoDelete(item.uid); };
+      undoList.appendChild(btn);
+    });
+  }
+
+  function undoDelete(uid) {
+    var entry = undoQueue.find(function (item) { return item.uid === uid; });
+    if (!entry) return;
     var board = getBoard();
-    if (lastDeleted.type === "task") {
-      var col = board.find(function (c) { return c.id === lastDeleted.data.column_id; });
+    if (entry.type === "task") {
+      var col = board.find(function (c) { return c.id === entry.data.column_id; });
       if (col) {
         col.tasks.push({
-          id: lastDeleted.data.id,
-          text: lastDeleted.data.text,
-          color: lastDeleted.data.color || "#444",
-          tags: lastDeleted.data.tags || [],
-          dueDate: lastDeleted.data.dueDate || null,
-          subtasks: lastDeleted.data.subtasks || []
+          id: entry.data.id,
+          text: entry.data.text,
+          color: entry.data.color || "#444",
+          tags: entry.data.tags || [],
+          dueDate: entry.data.dueDate || null,
+          subtasks: entry.data.subtasks || []
         });
         setBoard(board);
       }
-    } else if (lastDeleted.type === "column") {
+    } else if (entry.type === "column") {
       board.push({
-        id: lastDeleted.data.id,
-        name: lastDeleted.data.name,
+        id: entry.data.id,
+        name: entry.data.name,
         tasks: [],
         headerColor: null,
         bodyColor: null
       });
       setBoard(board);
     }
-    lastDeleted = null;
-    toast.classList.remove("show");
+    removeUndoEntry(uid);
     render();
   }
-
-  document.getElementById("undoBtn").addEventListener("click", undoDelete);
   document.getElementById("closePopupBtn").addEventListener("click", closePopup);
   document.getElementById("saveTaskBtn").addEventListener("click", saveTask);
 
@@ -1631,10 +1786,9 @@
     var board = getBoard();
     var col = board.find(function (c) { return c.id === columnId; });
     if (!col) return;
-    lastDeleted = { type: "column", data: { id: col.id, name: col.name } };
+    addUndoEntry({ type: "column", data: { id: col.id, name: col.name } });
     board = board.filter(function (c) { return c.id !== columnId; });
     setBoard(board);
-    showToast();
     render();
   }
 
@@ -1680,10 +1834,9 @@
     if (!col) return;
     var task = col.tasks.find(function (t) { return t.id === taskId; });
     if (!task) return;
-    lastDeleted = { type: "task", data: { id: task.id, text: task.text, color: task.color, tags: task.tags || [], dueDate: task.dueDate || null, subtasks: task.subtasks || [], column_id: columnId } };
+    addUndoEntry({ type: "task", data: { id: task.id, text: task.text, color: task.color, tags: task.tags || [], dueDate: task.dueDate || null, subtasks: task.subtasks || [], column_id: columnId } });
     col.tasks = col.tasks.filter(function (t) { return t.id !== taskId; });
     setBoard(board);
-    showToast();
     render();
   }
 
@@ -1762,7 +1915,7 @@
     reader.onload = function (e) {
       try {
         var imported = JSON.parse(e.target.result);
-        if (Array.isArray(imported) && imported.every(function (col) { return col.name && Array.isArray(col.tasks); })) {
+        if (Array.isArray(imported) && imported.every(function (col) { return col && typeof col === "object" && col.name && Array.isArray(col.tasks); })) {
           var normalized = imported.map(function (col) {
             return {
               id: col.id || id(),
@@ -1770,8 +1923,25 @@
               tasks: (col.tasks || []).map(function (t) { return normalizeTask(t); })
             };
           });
-          setBoard(normalized);
-          render();
+          showConfirm("Replace the current board with the imported board?", function () {
+            setBoard(normalized);
+            render();
+          }, function () {
+            showPrompt("Name for the new board:", "Imported Board", "Imported Board", function (boardName) {
+              if (boardName == null) {
+                ev.target.value = "";
+                return;
+              }
+              var boards = getBoards();
+              var newId = id();
+              boards[newId] = { id: newId, name: (boardName.trim() || "Imported Board"), columns: normalized };
+              setBoards(boards);
+              setCurrentBoardId(newId);
+              updateBoardSwitcher();
+              render();
+            });
+          });
+          return;
         } else {
           alert("Invalid JSON: expected array of columns with name and tasks.");
         }
@@ -1808,26 +1978,28 @@
   });
 
   document.getElementById("addBoardBtn").addEventListener("click", function () {
-    var name = prompt("Board name?", "New Board");
-    if (!name) return;
-    var boards = getBoards();
-    var newId = id();
-    boards[newId] = { id: newId, name: name.trim() || "New Board", columns: JSON.parse(JSON.stringify(DEFAULT_COLUMNS)) };
-    setBoards(boards);
-    setCurrentBoardId(newId);
-    updateBoardSwitcher();
-    render();
+    showPrompt("Board name", "New Board", "New Board", function (name) {
+      if (name == null) return;
+      var boards = getBoards();
+      var newId = id();
+      boards[newId] = { id: newId, name: name.trim() || "New Board", columns: JSON.parse(JSON.stringify(DEFAULT_COLUMNS)) };
+      setBoards(boards);
+      setCurrentBoardId(newId);
+      updateBoardSwitcher();
+      render();
+    });
   });
 
   document.getElementById("renameBoardBtn").addEventListener("click", function () {
     var boards = getBoards();
     var cid = getCurrentBoardId();
     if (!boards[cid]) return;
-    var name = prompt("Rename board:", boards[cid].name || "Board");
-    if (name == null) return;
-    boards[cid].name = (name.trim() || "Board");
-    setBoards(boards);
-    updateBoardSwitcher();
+    showPrompt("Rename board", "Board name", boards[cid].name || "Board", function (name) {
+      if (name == null) return;
+      boards[cid].name = (name.trim() || "Board");
+      setBoards(boards);
+      updateBoardSwitcher();
+    });
   });
 
   document.getElementById("deleteBoardBtn").addEventListener("click", function () {
@@ -2170,11 +2342,18 @@
 
       tasksToShow.forEach(function (task) {
         var taskEl = document.createElement("div");
-        taskEl.className = "task" + (task.id === lastDroppedTaskId ? " task-just-dropped" : "");
+        taskEl.className = "task" + (task.id === lastDroppedTaskId ? " task-just-dropped" : "") + (task.done ? " task-done" : "");
         taskEl.dataset.taskId = task.id;
         taskEl.style.background = task.color || "#444";
         taskEl.draggable = !reorderMode;
         taskEl.setAttribute("aria-label", "Task: " + (task.text.slice(0, 50) + (task.text.length > 50 ? "…" : "")));
+
+        if (task.done) {
+          var badge = document.createElement("div");
+          badge.className = "task-done-indicator";
+          badge.textContent = "✔";
+          taskEl.appendChild(badge);
+        }
 
         var textNode = document.createElement("div");
         textNode.className = "task-text";
@@ -2314,6 +2493,21 @@
         dupOpt.className = "dup-opt";
         dupOpt.textContent = "Duplicate";
         dupOpt.onclick = function () { closeTaskMenu(); duplicateTask(col.id, task.id); };
+        var doneOpt = document.createElement("button");
+        doneOpt.type = "button";
+        doneOpt.className = "done-opt";
+        doneOpt.textContent = task.done ? "Mark as Undone" : "Mark Done";
+        doneOpt.onclick = function () {
+          closeTaskMenu();
+          var board = getBoard();
+          var colMatch = board.find(function (x) { return x.id === col.id; });
+          if (!colMatch) return;
+          var taskMatch = colMatch.tasks.find(function (x) { return x.id === task.id; });
+          if (!taskMatch) return;
+          taskMatch.done = !taskMatch.done;
+          setBoard(board);
+          render();
+        };
         var delOpt = document.createElement("button");
         delOpt.type = "button";
         delOpt.className = "del-opt";
@@ -2324,6 +2518,7 @@
         };
         menuDropdown.appendChild(editOpt);
         menuDropdown.appendChild(dupOpt);
+        menuDropdown.appendChild(doneOpt);
         menuDropdown.appendChild(delOpt);
         menuWrap.appendChild(menuBtn);
         menuWrap.appendChild(menuDropdown);
