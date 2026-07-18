@@ -1,0 +1,2414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kanban Board</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      --accent: #5a5af2;
+      --accent-hover: #4848d4;
+      --column-shadow: rgba(0,0,0,0.25);
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1e1e2f;
+      color: #fff;
+      transition: background 0.3s ease;
+    }
+    body.board-bg-custom { background-size: cover; background-position: center; }
+    #board-bg-layer {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 0;
+      transition: opacity 0.3s ease;
+    }
+    #board-bg-layer .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+    #app-wrap { position: relative; z-index: 1; min-height: 100vh; }
+    h2 { text-align: center; margin: 15px 0; }
+    .top-bar {
+      display: flex;
+      justify-content: flex-end;
+      padding: 10px 20px 16px;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .board-zone {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 60vh;
+      overflow: hidden;
+    }
+    .board-scrollbar-zone {
+      flex-shrink: 0;
+      height: 14px;
+      padding: 0 20px 8px;
+      display: none;
+    }
+    .board-scrollbar-zone.visible { display: block; }
+    .board-scrollbar-track {
+      height: 100%;
+      background: #2e2e3e;
+      border-radius: 7px;
+      position: relative;
+      cursor: pointer;
+    }
+    .board-scrollbar-thumb {
+      position: absolute;
+      top: 2px;
+      height: 10px;
+      min-width: 40px;
+      background: var(--accent);
+      border-radius: 5px;
+      cursor: grab;
+      transition: background 0.15s;
+    }
+    .board-scrollbar-thumb:hover { background: var(--accent-hover); }
+    .board-scrollbar-thumb:active { cursor: grabbing; }
+    .board-scroll-container {
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0 20px 20px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .board-scroll-container::-webkit-scrollbar { display: none; }
+    .board {
+      display: flex;
+      gap: 20px;
+      min-height: 200px;
+    }
+    .column {
+      background: #2e2e3e;
+      padding: 12px;
+      border-radius: 10px;
+      width: 300px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 12px var(--column-shadow);
+      border-left: 4px solid var(--accent);
+    }
+    .column h3 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 0 10px;
+    }
+    .column h3 input {
+      flex: 1;
+      margin-right: 8px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #888;
+      color: #fff;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    .column h3 input:focus { outline: none; border-bottom-color: var(--accent); }
+    .column-menu-wrap { position: relative; flex-shrink: 0; }
+    .column-menu-btn {
+      background: transparent;
+      border: none;
+      color: #aaa;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .column-menu-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+    .column-menu-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: #2e2e3e;
+      border: 1px solid #444;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      z-index: 5;
+      min-width: 100px;
+    }
+    .column-menu-dropdown.open { display: block; }
+    .column-menu-dropdown button {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      background: none;
+      color: #e57373;
+      cursor: pointer;
+      font-size: 14px;
+      text-align: left;
+      border-radius: 4px;
+    }
+    .column-menu-dropdown button:hover { background: rgba(229,115,115,0.15); }
+    .column-menu-dropdown button.move-opt { color: #7c9cff; }
+    .column-menu-dropdown button.move-opt:hover { background: rgba(124,156,255,0.15); }
+    .reorder-banner {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 10px 20px;
+      background: #2e3e5e;
+      color: #c5d4ff;
+      font-size: 14px;
+    }
+    .reorder-banner.visible { display: flex; }
+    .reorder-banner .btn:not(.cancel) { background: #4caf50; }
+    .reorder-banner .btn:not(.cancel):hover { background: #43a047; }
+    .reorder-banner .btn.cancel { background: #555; color: #fff; }
+    .reorder-banner .btn.cancel:hover { background: #666; }
+    .column.reorder-dragging {
+      opacity: 0.85;
+      transform: scale(1.02);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      cursor: grabbing;
+      z-index: 20;
+    }
+    .column.column-drop-target {
+      box-shadow: inset 0 0 0 3px var(--accent);
+      border-radius: 10px;
+    }
+    .add-task-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 8px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .add-task-btn:hover { background: var(--accent-hover); }
+    .task {
+      background: #444;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      cursor: grab;
+      position: relative;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .task.task-just-dropped {
+      animation: taskDrop 0.35s ease;
+    }
+    @keyframes taskDrop {
+      0% { transform: scale(0.98); opacity: 0.9; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .task:hover .task-menu-wrap { opacity: 1; }
+    .task-menu-wrap {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 2;
+    }
+    .task-menu-btn {
+      background: rgba(0,0,0,0.3);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 16px;
+      line-height: 1;
+    }
+    .task-menu-btn:hover { background: rgba(0,0,0,0.5); }
+    .task-menu-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: #2e2e3e;
+      border: 1px solid #444;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      z-index: 10;
+      min-width: 110px;
+    }
+    .task-menu-dropdown.open { display: block; }
+    .task-menu-dropdown button {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      background: none;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 13px;
+      text-align: left;
+      border-radius: 4px;
+    }
+    .task-menu-dropdown button:hover { background: rgba(255,255,255,0.1); }
+    .task-menu-dropdown button.dup-opt { color: #7c9cff; }
+    .task-menu-dropdown button.del-opt { color: #e57373; }
+    .task-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .task-tag {
+      font-size: 11px;
+      padding: 2px 6px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+    }
+    .task-checklist {
+      margin-top: 6px;
+      font-size: 12px;
+    }
+    .task-checklist-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .task-checklist-item input[type="checkbox"] { cursor: pointer; }
+    .task-checklist-item.done { opacity: 0.7; }
+    .task-checklist-item.done .cl-text { text-decoration: line-through; }
+    .task-drop-placeholder {
+      height: 4px;
+      background: var(--accent);
+      border-radius: 2px;
+      margin: 2px 0;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .task-drop-placeholder.visible { opacity: 1; }
+    .tag-filter-bar .tag-chip,
+    .filter-row .tag-chip {
+      padding: 4px 10px;
+      border-radius: 12px;
+      border: 1px solid #555;
+      background: #2e2e3e;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .filter-row .tag-chip:hover { background: #3e3e4e; color: #fff; }
+    .tag-filter-bar .tag-chip.active,
+    .filter-row .tag-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .filter-row .tag-chip { flex-shrink: 0; }
+    .board-switcher {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: auto;
+    }
+    .board-switcher select {
+      background: #2e2e3e;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      min-width: 140px;
+    }
+    .board-switcher .btn { padding: 6px 10px; font-size: 13px; }
+    .board-switcher .board-del-btn { background: #c62828; }
+    .board-switcher .board-del-btn:hover { background: #b71c1c; }
+    #popup .tags-input-wrap { margin-bottom: 10px; }
+    #popup .tags-input-wrap label { display: block; margin-bottom: 4px; font-size: 12px; color: #aaa; }
+    #popup .tags-input {
+      width: 100%;
+      padding: 6px 8px;
+      background: #1a1a2e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+    }
+    #popup .checklist-wrap { margin-bottom: 10px; }
+    #popup .checklist-wrap label { display: block; margin-bottom: 6px; font-size: 12px; color: #aaa; }
+    #popup .checklist-list { margin-bottom: 6px; max-height: 120px; overflow-y: auto; }
+    #popup .checklist-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    #popup .checklist-item input[type="checkbox"] { flex-shrink: 0; cursor: pointer; }
+    #popup .checklist-item input[type="text"] {
+      flex: 1;
+      padding: 4px 8px;
+      background: #1a1a2e;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 13px;
+    }
+    #popup .checklist-item .remove-cl { background: #555; color: #fff; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    #popup .add-checklist-btn { background: #444; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 4px; }
+    #popup, #confirmModal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+    #popup.show, #confirmModal.show {
+      display: flex;
+      animation: fadeIn 0.2s ease-out;
+    }
+    #popup-content, #confirmBox {
+      background: #2e2e3e;
+      padding: 20px;
+      border-radius: 8px;
+      width: 320px;
+      max-width: 95vw;
+      animation: slideIn 0.2s ease-out;
+    }
+    #popup textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      margin-bottom: 10px;
+      background: #1a1a2e;
+      color: white;
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: inherit;
+    }
+    #popup textarea:focus { outline: none; border-color: var(--accent); }
+    #popup .char-count { font-size: 12px; color: #888; margin-top: 4px; }
+    #popup .char-count.at-limit { color: #e57373; }
+    .task-text-expand { font-size: 12px; color: #7c9cff; cursor: pointer; margin-top: 4px; }
+    .task-text-expand:hover { text-decoration: underline; }
+    #popup .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+    #popup .save { background: #2e7d32; }
+    #popup .save:hover { background: #1b5e20; }
+    #popup .cancel { background: #c62828; }
+    #popup .cancel:hover { background: #b71c1c; }
+    #confirmBox p { margin: 0 0 16px; }
+    #confirmBox .btn-row { display: flex; gap: 8px; }
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 6px;
+      display: none;
+      z-index: 999;
+      align-items: center;
+      gap: 8px;
+    }
+    #toast.show { display: flex; }
+    #toast button {
+      background: transparent;
+      color: #81c784;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .color-circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    .color-circle.selected { border-color: #fff; box-shadow: 0 0 0 2px #2e2e3e; }
+    #colorPicker { margin-bottom: 12px; }
+    #colorPicker .color-picker-label { display: block; margin-bottom: 6px; font-size: 12px; color: #aaa; }
+    .color-picker-circles { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .color-circle-wrap { position: relative; display: inline-block; }
+    .color-circle-wrap .color-circle { margin: 0; }
+    .color-circle-delete {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #c62828;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+    .color-circle-wrap:hover .color-circle-delete { display: flex; }
+    .color-circle-delete:hover { background: #b71c1c; }
+    .custom-color-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .custom-color-add input {
+      width: 100px;
+      padding: 6px 8px;
+      background: #1a1a2e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+    }
+    .custom-color-add input:focus { outline: none; border-color: var(--accent); }
+    .custom-color-add input::placeholder { color: #666; }
+    .custom-color-add .btn { padding: 6px 10px; font-size: 13px; }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideIn {
+      from { transform: scale(0.96); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    input[type="file"] { display: none; }
+    label.btn { cursor: pointer; margin: 0; }
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px 14px;
+      background: #252535;
+      border-bottom: 1px solid #333;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .filter-row .search-wrap { flex-shrink: 0; }
+    .filter-row .search-wrap input {
+      width: 180px;
+      min-width: 140px;
+      padding: 6px 10px;
+      background: #1a1a2e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+    }
+    .filter-row .search-wrap input:focus { outline: none; border-color: var(--accent); }
+    .filter-row .search-wrap input::placeholder { color: #666; }
+    .filter-row .filter-label { font-size: 13px; color: #999; flex-shrink: 0; }
+    .filter-row .tag-chips-wrap,
+    .filter-row .date-filter-chips-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      padding: 2px 0;
+    }
+    .filter-row .date-filter-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 220px;
+    }
+    #dateFilterInput {
+      padding: 6px 10px;
+      background: #1a1a2e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      min-width: 160px;
+    }
+    #dateFilterInput:focus { outline: none; border-color: var(--accent); }
+    .task {
+      background: #444;
+      padding: 12px 40px 10px 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      cursor: grab;
+      position: relative;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .task.task-just-dropped {
+      animation: taskDrop 0.35s ease;
+    }
+    .task-menu-wrap {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 2;
+    }
+    .task-menu-btn {
+      background: rgba(0,0,0,0.3);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 16px;
+      line-height: 1;
+      min-width: 30px;
+    }
+    .task-menu-btn:hover { background: rgba(0,0,0,0.5); }
+    body.density-compact .task { padding: 8px 54px 8px 8px; font-size: 13px; }
+    body.density-compact .task-menu-wrap { right: 6px; }
+    .task-due { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+    .task-due.overdue { color: #e57373; }
+    .task-due.today { color: #8bc34a; }
+    .task-due.tomorrow { color: #ffeb3b; }
+    .task-due.upcoming { color: #81d4fa; }
+    .filter-row .tag-chips-wrap::-webkit-scrollbar { height: 6px; }
+    .filter-row .tag-chips-wrap::-webkit-scrollbar-track { background: #1a1a2e; border-radius: 3px; }
+    .filter-row .tag-chips-wrap::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+    .settings-btn { background: #3e3e4e; padding: 6px 10px; border-radius: 6px; border: none; color: #aaa; cursor: pointer; font-size: 14px; }
+    .settings-btn:hover { background: #4e4e5e; color: #fff; }
+    #settingsPanel { display: none; position: absolute; top: 100%; right: 20px; margin-top: 4px; background: #2e2e3e; border: 1px solid #444; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 16px; min-width: 260px; z-index: 100; }
+    #settingsPanel.open { display: block; }
+    #settingsPanel h4 { margin: 0 0 12px; font-size: 14px; color: #aaa; }
+    #settingsPanel .accent-options { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    #settingsPanel .accent-swatch { width: 28px; height: 28px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
+    #settingsPanel .accent-swatch:hover { border-color: rgba(255,255,255,0.5); }
+    #settingsPanel .accent-swatch.active { border-color: #fff; box-shadow: 0 0 0 1px #2e2e3e; }
+    #settingsPanel .density-toggle,
+    #settingsPanel .shadow-toggle,
+    #settingsPanel .font-toggle {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: nowrap;
+    }
+    #settingsPanel .density-toggle button,
+    #settingsPanel .shadow-toggle button,
+    #settingsPanel .font-toggle button {
+      flex: 1;
+      padding: 8px;
+      background: #3e3e4e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    #settingsPanel .density-toggle button.active,
+    #settingsPanel .shadow-toggle button.active,
+    #settingsPanel .font-toggle button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    #settingsPanel .density-toggle button:hover:not(.active),
+    #settingsPanel .shadow-toggle button:hover:not(.active),
+    #settingsPanel .font-toggle button:hover:not(.active) {
+      background: #4e4e5e;
+    }
+    .board-bg-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .board-bg-presets .bg-opt { width: 56px; height: 40px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; background-size: cover; background-position: center; }
+    .board-bg-presets .bg-opt:hover { border-color: rgba(255,255,255,0.4); }
+    .board-bg-presets .bg-opt.active { border-color: var(--accent); }
+    .board-bg-custom-wrap { margin-top: 8px; }
+    .board-bg-custom-wrap label.btn { display: inline-block; padding: 6px 10px; font-size: 12px; }
+    body.density-compact .column { padding: 8px; width: 280px; }
+    body.density-compact .task { padding: 8px 46px 8px 8px; margin-bottom: 8px; font-size: 13px; }
+    body.density-compact .board { gap: 14px; }
+    body.density-compact .add-task-btn { padding: 6px; margin-bottom: 8px; font-size: 13px; }
+    #backgroundModal,
+    #columnColorModal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 50;
+    }
+    #backgroundModal.show,
+    #columnColorModal.show { display: flex; }
+    #backgroundModal .modal-inner,
+    #columnColorModal .modal-inner {
+      background: #2e2e3e;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 400px;
+      width: 90%;
+    }
+    #backgroundModal .modal-inner h3,
+    #columnColorModal .modal-inner h3 { margin: 0 0 16px; font-size: 16px; }
+    body.font-small { font-size: 13px; }
+    body.font-normal { font-size: 15px; }
+    body.font-large { font-size: 17px; }
+    body.font-small .task { font-size: 12px; }
+    body.font-large .task { font-size: 16px; }
+    .task-due { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+    .task-due.overdue { color: #e57373; }
+  </style>
+</head>
+<body>
+
+  <div id="board-bg-layer" aria-hidden="true"><div class="overlay"></div></div>
+  <div id="app-wrap">
+
+  <div class="top-bar">
+    <div class="board-switcher">
+      <select id="boardSelect" aria-label="Select board"></select>
+      <button class="btn" type="button" id="renameBoardBtn" title="Rename board">Rename</button>
+      <button class="btn board-del-btn" type="button" id="deleteBoardBtn" title="Delete board">Delete</button>
+      <button class="btn" type="button" id="addBoardBtn">+ Board</button>
+    </div>
+    <button class="btn" type="button" id="addColumnBtn">+ Add Column</button>
+    <button class="btn" type="button" id="exportBtn">Export</button>
+    <label class="btn">Import <input type="file" id="importFile" accept=".json" /></label>
+    <div class="settings-wrap" style="position:relative;">
+      <button type="button" class="settings-btn" id="settingsBtn" title="Settings" aria-label="Settings">⚙ Settings</button>
+      <div id="settingsPanel">
+        <h4>Accent color</h4>
+        <div class="accent-options" id="accentOptions"></div>
+        <h4>Density</h4>
+        <div class="density-toggle">
+          <button type="button" id="densityComfortable">Comfortable</button>
+          <button type="button" id="densityCompact">Compact</button>
+        </div>
+          <h4>Shadow</h4>
+          <div class="shadow-toggle">
+            <button type="button" id="shadowDark">Dark</button>
+            <button type="button" id="shadowAccent">Accent</button>
+            <button type="button" id="shadowNone">None</button>
+          </div>
+          <h4>Font size</h4>
+          <div class="font-toggle">
+            <button type="button" id="fontSmall">Small</button>
+            <button type="button" id="fontNormal">Normal</button>
+            <button type="button" id="fontLarge">Large</button>
+          </div>
+        <button type="button" class="btn" id="boardBgBtn" style="width:100%;margin-top:12px;">Background</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-row" id="tagFilterBar">
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search tasks..." aria-label="Search tasks" />
+    </div>
+    <span class="filter-label">Filter:</span>
+    <div class="tag-chips-wrap" id="tagFilterChips">
+      <button type="button" class="tag-chip active" data-tag="">All</button>
+    </div>
+    <div class="date-filter-wrap">
+      <span class="filter-label">Date:</span>
+      <div class="date-filter-chips-wrap" id="dateFilterChips"></div>
+      <input type="date" id="dateFilterInput" />
+      <button type="button" class="tag-chip" id="clearDateFilterBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="reorder-banner" id="reorderBanner">
+    <span>Reorder columns — drag a column to a new position</span>
+    <button class="btn" type="button" id="reorderDoneBtn">Done</button>
+    <button class="btn cancel" type="button" id="reorderCancelBtn">Cancel</button>
+  </div>
+
+  <div class="board-zone" id="boardZone">
+    <div class="board-scrollbar-zone" id="boardScrollbarZone">
+      <div class="board-scrollbar-track" id="boardScrollbarTrack">
+        <div class="board-scrollbar-thumb" id="boardScrollbarThumb"></div>
+      </div>
+    </div>
+    <div class="board-scroll-container" id="boardScrollContainer">
+      <div class="board" id="board"></div>
+    </div>
+  </div>
+
+  <div id="popup" aria-hidden="true">
+    <div id="popup-content">
+      <textarea id="taskText" placeholder="Task details..." maxlength="10000"></textarea>
+      <div class="char-count" id="taskCharCount">0 / 10,000</div>
+      <div class="tags-input-wrap">
+        <label>Tags (comma-separated)</label>
+        <input type="text" id="taskTagsInput" class="tags-input" placeholder="work, urgent, ..." />
+      </div>
+      <div class="due-date-wrap" style="margin-bottom:10px;">
+        <label for="taskDueInput" style="display:block;margin-bottom:4px;font-size:12px;color:#aaa;">Due date</label>
+        <input type="date" id="taskDueInput" style="width:100%;padding:6px 8px;background:#1a1a2e;border:1px solid #555;border-radius:6px;color:#fff;font-size:13px;" />
+      </div>
+      <div class="checklist-wrap">
+        <label>Checklist</label>
+        <div class="checklist-list" id="checklistList"></div>
+        <button type="button" class="add-checklist-btn" id="addChecklistBtn">+ Add item</button>
+      </div>
+      <div id="colorPicker">
+        <label class="color-picker-label">Task color</label>
+        <div class="color-picker-circles" id="colorPickerCircles"></div>
+        <div class="custom-color-add">
+          <input type="text" id="customColorInput" placeholder="#hex (e.g. #ff5500)" maxlength="7" aria-label="Custom hex color" />
+          <button type="button" class="btn" id="addCustomColorBtn">Add color</button>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn save" type="button" id="saveTaskBtn">Save</button>
+        <button class="btn cancel" type="button" id="closePopupBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirmModal" aria-hidden="true">
+    <div id="confirmBox">
+      <p id="confirmMessage">Are you sure?</p>
+      <div class="btn-row">
+        <button class="btn" type="button" id="confirmYes">Yes</button>
+        <button class="btn cancel" type="button" id="confirmNo">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast">Deleted. <button type="button" id="undoBtn">Undo</button></div>
+
+  <div id="backgroundModal" aria-hidden="true">
+    <div class="modal-inner">
+      <h3>Board background</h3>
+      <div class="board-bg-presets" id="boardBgPresets"></div>
+      <div class="board-bg-custom-wrap">
+        <label class="btn">Custom image <input type="file" id="boardBgFile" accept="image/*" /></label>
+        <button type="button" class="btn cancel" id="boardBgClear" style="margin-left:8px;">Clear</button>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button type="button" class="btn" id="backgroundModalClose">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="columnColorModal" aria-hidden="true">
+    <div class="modal-inner">
+      <h3>Column colors</h3>
+      <div class="column-color-section" style="margin-bottom:10px;">
+        <div class="color-picker-label">Header</div>
+        <div class="color-picker-circles" id="colHeaderCircles"></div>
+      </div>
+      <div class="column-color-section" style="margin-bottom:12px;">
+        <div class="color-picker-label">Body</div>
+        <div class="color-picker-circles" id="colBodyCircles"></div>
+      </div>
+      <div class="custom-color-add">
+        <input type="text" id="colCustomColorInput" placeholder="#hex (e.g. #ff5500)" maxlength="7" aria-label="Custom column color" />
+        <button type="button" class="btn" id="addColCustomColorBtn">Add color</button>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button type="button" class="btn save" id="colColorSaveBtn">Save</button>
+        <button type="button" class="btn" id="colColorCancelBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  const STORAGE_KEY_BOARDS = "kanban-boards";
+  const STORAGE_KEY_CURRENT = "kanban-current-board";
+  const STORAGE_KEY_CUSTOM_COLORS = "kanban-custom-colors";
+  const STORAGE_KEY_ACCENT = "kanban-accent";
+  const STORAGE_KEY_DENSITY = "kanban-density";
+  const STORAGE_KEY_SHADOW = "kanban-shadow";
+  const STORAGE_KEY_FONT = "kanban-font";
+  const DEFAULT_TASK_COLORS = ["#f44336", "#e91e63", "#9c27b0", "#3f51b5", "#03a9f4", "#4caf50", "#ff9800"];
+  const ACCENT_OPTIONS = [
+    { id: "purple", color: "#5a5af2", hover: "#4848d4" },
+    { id: "blue", color: "#2196f3", hover: "#1976d2" },
+    { id: "green", color: "#4caf50", hover: "#43a047" },
+    { id: "orange", color: "#ff9800", hover: "#f57c00" },
+    { id: "teal", color: "#009688", hover: "#00897b" },
+    { id: "pink", color: "#e91e63", hover: "#c2185b" }
+  ];
+  const BACKGROUND_PRESETS = [
+    { id: "default", name: "Default", css: "" },
+    { id: "ocean", name: "Ocean", css: "linear-gradient(135deg, #1a1a2e 0%, #0d2137 50%, #1a2a3e 100%)" },
+    { id: "forest", name: "Forest", css: "linear-gradient(145deg, #1a2e1a 0%, #1e1e2f 60%, #0f1f0f 100%)" },
+    { id: "sunset", name: "Sunset", css: "linear-gradient(180deg, #2e1a2e 0%, #1e1e2f 50%, #2a1a1a 100%)" },
+    { id: "minimal", name: "Minimal", css: "linear-gradient(180deg, #252535 0%, #1e1e2f 100%)" }
+  ];
+  const DEFAULT_COLUMNS = [
+    { id: "col-1", name: "To Do", tasks: [], headerColor: null, bodyColor: null },
+    { id: "col-2", name: "In Progress", tasks: [], headerColor: null, bodyColor: null },
+    { id: "col-3", name: "Done", tasks: [], headerColor: null, bodyColor: null }
+  ];
+
+  function id() {
+    return "id-" + Date.now() + "-" + Math.random().toString(36).slice(2, 9);
+  }
+
+  function defaultBoard() {
+    return { id: id(), name: "My Board", columns: JSON.parse(JSON.stringify(DEFAULT_COLUMNS)) };
+  }
+
+  function getBoards() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY_BOARDS);
+      if (!raw) {
+        var oldRaw = localStorage.getItem("kanban-board");
+        if (oldRaw) {
+          try {
+            var old = JSON.parse(oldRaw);
+            if (Array.isArray(old) && old.length) {
+              var migrated = { _default: { id: "_default", name: "My Board", columns: old.map(function (c) {
+                return { id: c.id || id(), name: c.name, tasks: (c.tasks || []).map(function (t) { return normalizeTask(t); }) };
+              }) } };
+              setBoards(migrated);
+              setCurrentBoardId("_default");
+              return migrated;
+            }
+          } catch (_) {}
+        }
+        return { _default: defaultBoard() };
+      }
+      var data = JSON.parse(raw);
+      if (!data || typeof data !== "object") return { _default: defaultBoard() };
+      var hasAny = false;
+      for (var k in data) { if (data[k] && data[k].columns) { hasAny = true; break; } }
+      return hasAny ? data : { _default: defaultBoard() };
+    } catch (_) {
+      return { _default: defaultBoard() };
+    }
+  }
+
+  function setBoards(boards) {
+    localStorage.setItem(STORAGE_KEY_BOARDS, JSON.stringify(boards));
+  }
+
+  function getCurrentBoardId() {
+    return localStorage.getItem(STORAGE_KEY_CURRENT) || "_default";
+  }
+
+  function setCurrentBoardId(boardId) {
+    localStorage.setItem(STORAGE_KEY_CURRENT, boardId);
+  }
+
+  function getCustomColors() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY_CUSTOM_COLORS);
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(function (c) { return typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c); }) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function setCustomColors(colors) {
+    localStorage.setItem(STORAGE_KEY_CUSTOM_COLORS, JSON.stringify(colors));
+  }
+
+  function getAccent() {
+    var s = localStorage.getItem(STORAGE_KEY_ACCENT);
+    var found = ACCENT_OPTIONS.find(function (o) { return o.id === s; });
+    return found || ACCENT_OPTIONS[0];
+  }
+
+  function setAccent(accentId) {
+    localStorage.setItem(STORAGE_KEY_ACCENT, accentId);
+    applyAccent();
+  }
+
+  function applyAccent() {
+    var opt = getAccent();
+    document.documentElement.style.setProperty("--accent", opt.color);
+    document.documentElement.style.setProperty("--accent-hover", opt.hover);
+    applyShadowStyle();
+  }
+
+  function getDensity() {
+    return localStorage.getItem(STORAGE_KEY_DENSITY) || "comfortable";
+  }
+
+  function setDensity(d) {
+    localStorage.setItem(STORAGE_KEY_DENSITY, d);
+    document.body.classList.toggle("density-compact", d === "compact");
+  }
+
+  function getShadowStyle() {
+    return localStorage.getItem(STORAGE_KEY_SHADOW) || "dark";
+  }
+
+  function setShadowStyle(s) {
+    localStorage.setItem(STORAGE_KEY_SHADOW, s);
+    applyShadowStyle();
+  }
+
+  function hexToRgba(hex, alpha) {
+    var h = normalizeHex(hex);
+    if (!h) return null;
+    var r = parseInt(h.slice(1, 3), 16);
+    var g = parseInt(h.slice(3, 5), 16);
+    var b = parseInt(h.slice(5, 7), 16);
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
+
+  function applyShadowStyle() {
+    var style = getShadowStyle();
+    var root = document.documentElement;
+    if (style === "accent") {
+      var opt = getAccent();
+      var rgba = hexToRgba(opt.color, 0.45) || "rgba(0,0,0,0.25)";
+      root.style.setProperty("--column-shadow", rgba);
+    } else if (style === "none") {
+      root.style.setProperty("--column-shadow", "rgba(0,0,0,0)");
+    } else {
+      root.style.setProperty("--column-shadow", "rgba(0,0,0,0.25)");
+    }
+  }
+
+  function getFontSizeSetting() {
+    return localStorage.getItem(STORAGE_KEY_FONT) || "normal";
+  }
+
+  function setFontSizeSetting(v) {
+    localStorage.setItem(STORAGE_KEY_FONT, v);
+    applyFontSize();
+  }
+
+  function applyFontSize() {
+    var v = getFontSizeSetting();
+    document.body.classList.remove("font-small", "font-normal", "font-large");
+    if (v === "small") document.body.classList.add("font-small");
+    else if (v === "large") document.body.classList.add("font-large");
+    else document.body.classList.add("font-normal");
+  }
+
+  function getBoardBackground() {
+    var meta = getCurrentBoardMeta();
+    return meta.background || { type: "default" };
+  }
+
+  function setBoardBackground(bg) {
+    var boards = getBoards();
+    var cid = getCurrentBoardId();
+    if (!boards[cid]) return;
+    boards[cid].background = bg;
+    setBoards(boards);
+    applyBoardBackground();
+  }
+
+  function applyBoardBackground() {
+    var bg = getBoardBackground();
+    var layer = document.getElementById("board-bg-layer");
+    if (!layer) return;
+    var overlay = layer.querySelector(".overlay");
+    if (bg.type === "custom" && bg.customImage) {
+      layer.style.backgroundImage = "url(" + bg.customImage + ")";
+      layer.style.backgroundSize = "cover";
+      layer.style.backgroundPosition = "center";
+      layer.style.opacity = "1";
+      if (overlay) overlay.style.display = "block";
+    } else if (bg.type === "preset" && bg.presetId) {
+      var preset = BACKGROUND_PRESETS.find(function (p) { return p.id === bg.presetId; });
+      if (preset && preset.css) {
+        layer.style.backgroundImage = preset.css;
+        layer.style.backgroundSize = "cover";
+        layer.style.backgroundPosition = "center";
+        layer.style.opacity = "1";
+        if (overlay) overlay.style.display = "none";
+      } else {
+        layer.style.backgroundImage = "";
+        layer.style.opacity = "0";
+        if (overlay) overlay.style.display = "";
+      }
+    } else {
+      layer.style.backgroundImage = "";
+      layer.style.opacity = "0";
+      if (overlay) overlay.style.display = "";
+    }
+  }
+
+  function normalizeHex(str) {
+    if (typeof str !== "string") return null;
+    str = str.trim().replace(/^#/, "");
+    if (/^[0-9a-fA-F]{6}$/.test(str)) return "#" + str.toLowerCase();
+    if (/^[0-9a-fA-F]{3}$/.test(str)) {
+      return "#" + (str[0] + str[0] + str[1] + str[1] + str[2] + str[2]).toLowerCase();
+    }
+    return null;
+  }
+
+  function getBoard() {
+    var boards = getBoards();
+    var cid = getCurrentBoardId();
+    if (!boards[cid] || !boards[cid].columns) {
+      boards[cid] = defaultBoard();
+      boards[cid].id = cid;
+      setBoards(boards);
+    }
+    return boards[cid].columns;
+  }
+
+  function setBoard(columns) {
+    var boards = getBoards();
+    var cid = getCurrentBoardId();
+    if (!boards[cid]) boards[cid] = { id: cid, name: "Board", columns: [] };
+    boards[cid].columns = columns;
+    setBoards(boards);
+  }
+
+  function getCurrentBoardMeta() {
+    var boards = getBoards();
+    var cid = getCurrentBoardId();
+    return boards[cid] || { id: cid, name: "Board", columns: [] };
+  }
+
+  function normalizeTask(t) {
+    return {
+      id: t.id || id(),
+      text: t.text || "",
+      color: t.color || "#444",
+      tags: Array.isArray(t.tags) ? t.tags : [],
+      dueDate: t.dueDate && typeof t.dueDate === "string" ? t.dueDate : null,
+      subtasks: Array.isArray(t.subtasks) ? t.subtasks.map(function (s) {
+        return { id: s.id || id(), text: s.text || "", done: !!s.done };
+      }) : []
+    };
+  }
+
+  const boardEl = document.getElementById("board");
+  const boardScrollContainer = document.getElementById("boardScrollContainer");
+  const boardScrollbarZone = document.getElementById("boardScrollbarZone");
+  const boardScrollbarTrack = document.getElementById("boardScrollbarTrack");
+  const boardScrollbarThumb = document.getElementById("boardScrollbarThumb");
+  const popup = document.getElementById("popup");
+  const taskText = document.getElementById("taskText");
+  const toast = document.getElementById("toast");
+  const confirmModal = document.getElementById("confirmModal");
+  const confirmMessage = document.getElementById("confirmMessage");
+
+  let currentColumnId = null;
+  let editingTask = null;
+  let confirmCallback = null;
+  let selectedColor = "#444";
+  let lastDeleted = null;
+  let columnMenuOpen = null;
+  let taskMenuOpen = null;
+  let scrollbarDragging = false;
+  let scrollbarDragStartX = 0;
+  let scrollbarDragStartScrollLeft = 0;
+  let reorderMode = false;
+  let reorderSnapshot = null;
+  let filterTags = [];
+  let dateFilter = "";
+  let searchQuery = "";
+  let expandedTaskId = null;
+  let lastDroppedTaskId = null;
+  let columnColorEditingId = null;
+  let columnHeaderColorTemp = null;
+  let columnBodyColorTemp = null;
+  const TASK_TEXT_MAX = 10000;
+  const TASK_TEXT_TRUNCATE = 100;
+
+  function highlightSelectedColor() {
+    document.querySelectorAll("#colorPicker .color-circle").forEach(function (el) {
+      el.classList.toggle("selected", el.dataset.color === selectedColor);
+    });
+  }
+
+  function renderColorPicker() {
+    var container = document.getElementById("colorPickerCircles");
+    container.innerHTML = "";
+    var custom = getCustomColors();
+    var taskColor = (editingTask && editingTask.color) ? editingTask.color : null;
+    var allColors = DEFAULT_TASK_COLORS.slice();
+    custom.forEach(function (c) {
+      if (allColors.indexOf(c) === -1) allColors.push(c);
+    });
+    if (taskColor && allColors.indexOf(taskColor) === -1) allColors.push(taskColor);
+    allColors.forEach(function (hex) {
+      var isCustom = custom.indexOf(hex) !== -1;
+      var isOrphanTaskColor = taskColor && hex === taskColor && custom.indexOf(hex) === -1 && DEFAULT_TASK_COLORS.indexOf(hex) === -1;
+      if (isCustom || isOrphanTaskColor) {
+        var wrap = document.createElement("div");
+        wrap.className = "color-circle-wrap";
+        var circle = document.createElement("div");
+        circle.className = "color-circle";
+        circle.dataset.color = hex;
+        circle.style.background = hex;
+        wrap.appendChild(circle);
+        if (isCustom) {
+          var delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "color-circle-delete";
+          delBtn.innerHTML = "×";
+          delBtn.setAttribute("aria-label", "Remove this color");
+          delBtn.dataset.color = hex;
+          wrap.appendChild(delBtn);
+        }
+        container.appendChild(wrap);
+      } else {
+        var circle = document.createElement("div");
+        circle.className = "color-circle";
+        circle.dataset.color = hex;
+        circle.style.background = hex;
+        container.appendChild(circle);
+      }
+    });
+    highlightSelectedColor();
+  }
+
+  document.getElementById("colorPicker").addEventListener("click", function (e) {
+    var circle = e.target.closest(".color-circle");
+    var delBtn = e.target.closest(".color-circle-delete");
+    if (delBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var hex = delBtn.dataset.color;
+      var custom = getCustomColors().filter(function (c) { return c !== hex; });
+      setCustomColors(custom);
+      renderColorPicker();
+      return;
+    }
+    if (circle) {
+      selectedColor = circle.dataset.color;
+      highlightSelectedColor();
+    }
+  });
+
+  document.getElementById("addCustomColorBtn").addEventListener("click", function () {
+    var input = document.getElementById("customColorInput");
+    var hex = normalizeHex(input.value);
+    if (!hex) {
+      alert("Enter a valid hex color (e.g. #ff5500 or ff5500).");
+      return;
+    }
+    var custom = getCustomColors();
+    if (custom.indexOf(hex) !== -1) return;
+    custom.push(hex);
+    setCustomColors(custom);
+    input.value = "";
+    selectedColor = hex;
+    renderColorPicker();
+  });
+
+  document.getElementById("customColorInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("addCustomColorBtn").click();
+    }
+  });
+
+  document.getElementById("searchInput").addEventListener("input", function () {
+    searchQuery = (this.value || "").trim().toLowerCase();
+    render();
+  });
+
+  document.getElementById("dateFilterInput").addEventListener("change", function () {
+    var value = (this.value || "").trim();
+    if (value) {
+      dateFilter = value;
+    } else {
+      dateFilter = "";
+    }
+    updateDateFilterBar();
+    render();
+  });
+
+  document.getElementById("clearDateFilterBtn").addEventListener("click", function () {
+    setDateFilter("");
+  });
+
+  document.getElementById("settingsBtn").addEventListener("click", function (e) {
+    e.stopPropagation();
+    var panel = document.getElementById("settingsPanel");
+    panel.classList.toggle("open");
+  });
+  document.addEventListener("click", function () {
+    document.getElementById("settingsPanel").classList.remove("open");
+  });
+  document.getElementById("settingsPanel").addEventListener("click", function (e) { e.stopPropagation(); });
+
+  function renderAccentOptions() {
+    var container = document.getElementById("accentOptions");
+    if (!container) return;
+    container.innerHTML = "";
+    var current = getAccent();
+    ACCENT_OPTIONS.forEach(function (opt) {
+      var swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "accent-swatch" + (opt.id === current.id ? " active" : "");
+      swatch.style.background = opt.color;
+      swatch.setAttribute("aria-label", "Accent " + opt.id);
+      swatch.onclick = function () { setAccent(opt.id); renderAccentOptions(); };
+      container.appendChild(swatch);
+    });
+  }
+
+  document.getElementById("densityComfortable").addEventListener("click", function () {
+    setDensity("comfortable");
+    document.getElementById("densityComfortable").classList.add("active");
+    document.getElementById("densityCompact").classList.remove("active");
+  });
+  document.getElementById("densityCompact").addEventListener("click", function () {
+    setDensity("compact");
+    document.getElementById("densityCompact").classList.add("active");
+    document.getElementById("densityComfortable").classList.remove("active");
+  });
+
+  document.getElementById("shadowDark").addEventListener("click", function () {
+    setShadowStyle("dark");
+    document.getElementById("shadowDark").classList.add("active");
+    document.getElementById("shadowAccent").classList.remove("active");
+    document.getElementById("shadowNone").classList.remove("active");
+  });
+  document.getElementById("shadowAccent").addEventListener("click", function () {
+    setShadowStyle("accent");
+    document.getElementById("shadowAccent").classList.add("active");
+    document.getElementById("shadowDark").classList.remove("active");
+    document.getElementById("shadowNone").classList.remove("active");
+  });
+  document.getElementById("shadowNone").addEventListener("click", function () {
+    setShadowStyle("none");
+    document.getElementById("shadowNone").classList.add("active");
+    document.getElementById("shadowDark").classList.remove("active");
+    document.getElementById("shadowAccent").classList.remove("active");
+  });
+
+  document.getElementById("fontSmall").addEventListener("click", function () {
+    setFontSizeSetting("small");
+    document.getElementById("fontSmall").classList.add("active");
+    document.getElementById("fontNormal").classList.remove("active");
+    document.getElementById("fontLarge").classList.remove("active");
+  });
+  document.getElementById("fontNormal").addEventListener("click", function () {
+    setFontSizeSetting("normal");
+    document.getElementById("fontNormal").classList.add("active");
+    document.getElementById("fontSmall").classList.remove("active");
+    document.getElementById("fontLarge").classList.remove("active");
+  });
+  document.getElementById("fontLarge").addEventListener("click", function () {
+    setFontSizeSetting("large");
+    document.getElementById("fontLarge").classList.add("active");
+    document.getElementById("fontSmall").classList.remove("active");
+    document.getElementById("fontNormal").classList.remove("active");
+  });
+
+  document.getElementById("boardBgBtn").addEventListener("click", function () {
+    document.getElementById("backgroundModal").classList.add("show");
+    renderBackgroundPresets();
+  });
+  document.getElementById("backgroundModalClose").addEventListener("click", function () {
+    document.getElementById("backgroundModal").classList.remove("show");
+  });
+  document.getElementById("boardBgFile").addEventListener("change", function (e) {
+    var file = e.target.files[0];
+    if (!file || !file.type.match(/^image\//)) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      setBoardBackground({ type: "custom", customImage: ev.target.result });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  });
+  document.getElementById("boardBgClear").addEventListener("click", function () {
+    setBoardBackground({ type: "default" });
+  });
+
+  function renderBackgroundPresets() {
+    var container = document.getElementById("boardBgPresets");
+    if (!container) return;
+    container.innerHTML = "";
+    var current = getBoardBackground();
+    BACKGROUND_PRESETS.forEach(function (preset) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bg-opt" + (current.type === "preset" && current.presetId === preset.id ? " active" : current.type === "default" && preset.id === "default" ? " active" : "");
+      btn.title = preset.name;
+      if (preset.css) btn.style.backgroundImage = preset.css;
+      else btn.style.background = "#1e1e2f";
+      btn.onclick = function () {
+        setBoardBackground(preset.id === "default" ? { type: "default" } : { type: "preset", presetId: preset.id });
+        renderBackgroundPresets();
+      };
+      container.appendChild(btn);
+    });
+  }
+
+  document.getElementById("addColCustomColorBtn").addEventListener("click", function () {
+    var input = document.getElementById("colCustomColorInput");
+    var hex = normalizeHex(input.value);
+    if (!hex) {
+      alert("Enter a valid hex color (e.g. #ff5500 or ff5500).");
+      return;
+    }
+    var custom = getCustomColors();
+    if (custom.indexOf(hex) === -1) {
+      custom.push(hex);
+      setCustomColors(custom);
+    }
+    input.value = "";
+    renderColumnColorPickers();
+  });
+
+  document.getElementById("colColorSaveBtn").addEventListener("click", function () {
+    if (!columnColorEditingId) {
+      closeColumnColorModal();
+      return;
+    }
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === columnColorEditingId; });
+    if (col) {
+      col.headerColor = columnHeaderColorTemp;
+      col.bodyColor = columnBodyColorTemp;
+      setBoard(board);
+      render();
+    }
+    closeColumnColorModal();
+  });
+
+  document.getElementById("colColorCancelBtn").addEventListener("click", closeColumnColorModal);
+
+  function openColumnColorModal(col) {
+    columnColorEditingId = col.id;
+    columnHeaderColorTemp = col.headerColor || null;
+    columnBodyColorTemp = col.bodyColor || null;
+    renderColumnColorPickers();
+    var modal = document.getElementById("columnColorModal");
+    modal.classList.add("show");
+    modal.setAttribute("aria-hidden", "false");
+    document.getElementById("colCustomColorInput").value = "";
+  }
+
+  function closeColumnColorModal() {
+    columnColorEditingId = null;
+    columnHeaderColorTemp = null;
+    columnBodyColorTemp = null;
+    var modal = document.getElementById("columnColorModal");
+    modal.classList.remove("show");
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  function renderColumnColorPickers() {
+    var custom = getCustomColors();
+    var allColors = DEFAULT_TASK_COLORS.slice();
+    custom.forEach(function (c) {
+      if (allColors.indexOf(c) === -1) allColors.push(c);
+    });
+
+    function renderRow(containerId, selectedColor, onClick) {
+      var container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = "";
+      allColors.forEach(function (hex) {
+        var wrap = document.createElement("div");
+        wrap.className = "color-circle-wrap";
+        var circle = document.createElement("div");
+        circle.className = "color-circle";
+        circle.dataset.color = hex;
+        circle.style.background = hex;
+        if (selectedColor === hex) circle.classList.add("selected");
+        circle.onclick = function () { onClick(hex); };
+        wrap.appendChild(circle);
+        container.appendChild(wrap);
+      });
+    }
+
+    renderRow("colHeaderCircles", columnHeaderColorTemp, function (hex) {
+      columnHeaderColorTemp = hex;
+      renderColumnColorPickers();
+    });
+    renderRow("colBodyCircles", columnBodyColorTemp, function (hex) {
+      columnBodyColorTemp = hex;
+      renderColumnColorPickers();
+    });
+  }
+
+  function updateTaskCharCount() {
+    var el = document.getElementById("taskCharCount");
+    var len = (taskText.value || "").length;
+    el.textContent = len.toLocaleString() + " / 10,000";
+    el.classList.toggle("at-limit", len >= TASK_TEXT_MAX);
+  }
+
+  function openPopup(columnId, task) {
+    currentColumnId = columnId;
+    editingTask = task ? normalizeTask(task) : null;
+    taskText.value = editingTask ? editingTask.text : "";
+    selectedColor = (editingTask && editingTask.color) ? editingTask.color : "#444";
+    document.getElementById("taskTagsInput").value = (editingTask && editingTask.tags && editingTask.tags.length) ? editingTask.tags.join(", ") : "";
+    var dueInput = document.getElementById("taskDueInput");
+    dueInput.value = (editingTask && editingTask.dueDate) ? editingTask.dueDate : "";
+    renderChecklistInPopup(editingTask ? (editingTask.subtasks || []) : []);
+    renderColorPicker();
+    updateTaskCharCount();
+    popup.classList.add("show");
+    popup.setAttribute("aria-hidden", "false");
+    document.getElementById("customColorInput").value = "";
+    taskText.focus();
+  }
+
+  taskText.addEventListener("input", updateTaskCharCount);
+
+  function renderChecklistInPopup(subtasks) {
+    var list = document.getElementById("checklistList");
+    list.innerHTML = "";
+    (subtasks || []).forEach(function (s, i) {
+      var row = document.createElement("div");
+      row.className = "checklist-item";
+      row.innerHTML = "<input type=\"checkbox\" " + (s.done ? "checked" : "") + " /><input type=\"text\" value=\"" + (s.text || "").replace(/"/g, "&quot;") + "\" placeholder=\"Item\" /><button type=\"button\" class=\"remove-cl\">×</button>";
+      var cb = row.querySelector('input[type="checkbox"]');
+      var textIn = row.querySelector('input[type="text"]');
+      var removeBtn = row.querySelector(".remove-cl");
+      cb.onchange = function () { s.done = cb.checked; };
+      textIn.onchange = function () { s.text = textIn.value; };
+      removeBtn.onclick = function () { subtasks.splice(i, 1); renderChecklistInPopup(subtasks); };
+      list.appendChild(row);
+    });
+  }
+
+  function getChecklistFromPopup() {
+    var items = [];
+    document.querySelectorAll("#checklistList .checklist-item").forEach(function (row) {
+      var cb = row.querySelector('input[type="checkbox"]');
+      var textIn = row.querySelector('input[type="text"]');
+      items.push({ id: id(), text: textIn ? textIn.value : "", done: cb ? cb.checked : false });
+    });
+    return items;
+  }
+
+  document.getElementById("addChecklistBtn").addEventListener("click", function () {
+    var list = document.getElementById("checklistList");
+    var row = document.createElement("div");
+    row.className = "checklist-item";
+    row.innerHTML = "<input type=\"checkbox\" /><input type=\"text\" placeholder=\"Item\" /><button type=\"button\" class=\"remove-cl\">×</button>";
+    row.querySelector(".remove-cl").onclick = function () { row.remove(); };
+    list.appendChild(row);
+  });
+
+  function closePopup() {
+    popup.classList.remove("show");
+    popup.setAttribute("aria-hidden", "true");
+    editingTask = null;
+    currentColumnId = null;
+    taskText.value = "";
+  }
+
+  function showConfirm(message, callback) {
+    confirmMessage.textContent = message;
+    confirmModal.classList.add("show");
+    confirmModal.setAttribute("aria-hidden", "false");
+    confirmCallback = callback;
+  }
+
+  function hideConfirm() {
+    confirmModal.classList.remove("show");
+    confirmModal.setAttribute("aria-hidden", "true");
+    confirmCallback = null;
+  }
+
+  function closeColumnMenu() {
+    if (columnMenuOpen) {
+      columnMenuOpen.classList.remove("open");
+      columnMenuOpen = null;
+    }
+  }
+  document.addEventListener("click", closeColumnMenu);
+
+  function closeTaskMenu() {
+    if (taskMenuOpen) {
+      taskMenuOpen.classList.remove("open");
+      taskMenuOpen = null;
+    }
+  }
+  document.addEventListener("click", closeTaskMenu);
+
+  document.getElementById("confirmYes").addEventListener("click", function () {
+    if (confirmCallback) confirmCallback();
+    hideConfirm();
+  });
+  document.getElementById("confirmNo").addEventListener("click", hideConfirm);
+
+  function showToast() {
+    toast.classList.add("show");
+    setTimeout(function () {
+      toast.classList.remove("show");
+    }, 5000);
+  }
+
+  function undoDelete() {
+    if (!lastDeleted) return;
+    var board = getBoard();
+    if (lastDeleted.type === "task") {
+      var col = board.find(function (c) { return c.id === lastDeleted.data.column_id; });
+      if (col) {
+        col.tasks.push({
+          id: lastDeleted.data.id,
+          text: lastDeleted.data.text,
+          color: lastDeleted.data.color || "#444",
+          tags: lastDeleted.data.tags || [],
+          dueDate: lastDeleted.data.dueDate || null,
+          subtasks: lastDeleted.data.subtasks || []
+        });
+        setBoard(board);
+      }
+    } else if (lastDeleted.type === "column") {
+      board.push({
+        id: lastDeleted.data.id,
+        name: lastDeleted.data.name,
+        tasks: [],
+        headerColor: null,
+        bodyColor: null
+      });
+      setBoard(board);
+    }
+    lastDeleted = null;
+    toast.classList.remove("show");
+    render();
+  }
+
+  document.getElementById("undoBtn").addEventListener("click", undoDelete);
+  document.getElementById("closePopupBtn").addEventListener("click", closePopup);
+  document.getElementById("saveTaskBtn").addEventListener("click", saveTask);
+
+  function saveTask() {
+    var text = (taskText.value || "").trim();
+    if (!text) return;
+    if (text.length > TASK_TEXT_MAX) text = text.slice(0, TASK_TEXT_MAX);
+    var tagsStr = (document.getElementById("taskTagsInput").value || "").trim();
+    var tags = tagsStr ? tagsStr.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    var dueVal = document.getElementById("taskDueInput").value;
+    var dueDate = (dueVal && dueVal.trim()) ? dueVal.trim() : null;
+    var subtasks = getChecklistFromPopup();
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === currentColumnId; });
+    if (!col) { closePopup(); return; }
+    if (editingTask) {
+      var t = col.tasks.find(function (x) { return x.id === editingTask.id; });
+      if (t) {
+        t.text = text;
+        t.color = selectedColor;
+        t.tags = tags;
+        t.dueDate = dueDate;
+        t.subtasks = subtasks;
+      }
+    } else {
+      col.tasks.push({ id: id(), text: text, color: selectedColor, tags: tags, dueDate: dueDate, subtasks: subtasks });
+    }
+    setBoard(board);
+    closePopup();
+    render();
+  }
+
+  function addColumn() {
+    var board = getBoard();
+    board.push({ id: id(), name: "New Column", tasks: [], headerColor: null, bodyColor: null });
+    setBoard(board);
+    render();
+  }
+
+  function updateColumnName(columnId, name) {
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === columnId; });
+    if (col) {
+      col.name = name;
+      setBoard(board);
+    }
+  }
+
+  function deleteColumn(columnId) {
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === columnId; });
+    if (!col) return;
+    lastDeleted = { type: "column", data: { id: col.id, name: col.name } };
+    board = board.filter(function (c) { return c.id !== columnId; });
+    setBoard(board);
+    showToast();
+    render();
+  }
+
+  function reorderColumns(draggedId, targetId) {
+    if (draggedId === targetId) return;
+    var board = getBoard();
+    var fromIdx = board.findIndex(function (c) { return c.id === draggedId; });
+    var toIdx = board.findIndex(function (c) { return c.id === targetId; });
+    if (fromIdx === -1 || toIdx === -1) return;
+    var col = board.splice(fromIdx, 1)[0];
+    board.splice(toIdx, 0, col);
+    setBoard(board);
+    render();
+  }
+
+  function enterReorderMode() {
+    closeColumnMenu();
+    reorderSnapshot = JSON.stringify(getBoard());
+    reorderMode = true;
+    document.getElementById("reorderBanner").classList.add("visible");
+    render();
+  }
+
+  function exitReorderMode(cancel) {
+    if (cancel && reorderSnapshot) {
+      try {
+        var restored = JSON.parse(reorderSnapshot);
+        setBoard(restored);
+      } catch (_) {}
+    }
+    reorderSnapshot = null;
+    reorderMode = false;
+    document.getElementById("reorderBanner").classList.remove("visible");
+    render();
+  }
+
+  document.getElementById("reorderDoneBtn").addEventListener("click", function () { exitReorderMode(false); });
+  document.getElementById("reorderCancelBtn").addEventListener("click", function () { exitReorderMode(true); });
+
+  function deleteTask(columnId, taskId) {
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === columnId; });
+    if (!col) return;
+    var task = col.tasks.find(function (t) { return t.id === taskId; });
+    if (!task) return;
+    lastDeleted = { type: "task", data: { id: task.id, text: task.text, color: task.color, tags: task.tags || [], dueDate: task.dueDate || null, subtasks: task.subtasks || [], column_id: columnId } };
+    col.tasks = col.tasks.filter(function (t) { return t.id !== taskId; });
+    setBoard(board);
+    showToast();
+    render();
+  }
+
+  function duplicateTask(columnId, taskId) {
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === columnId; });
+    if (!col) return;
+    var task = col.tasks.find(function (t) { return t.id === taskId; });
+    if (!task) return;
+    var copy = normalizeTask({
+      text: task.text,
+      color: task.color,
+      tags: task.tags || [],
+      dueDate: task.dueDate || null,
+      subtasks: (task.subtasks || []).map(function (s) { return { text: s.text, done: false }; })
+    });
+    col.tasks.push(copy);
+    setBoard(board);
+    render();
+  }
+
+  function reorderTasksInColumn(columnId, draggedTaskId, targetTaskId) {
+    if (draggedTaskId === targetTaskId) return;
+    var board = getBoard();
+    var col = board.find(function (c) { return c.id === columnId; });
+    if (!col) return;
+    var fromIdx = col.tasks.findIndex(function (t) { return t.id === draggedTaskId; });
+    var toIdx = col.tasks.findIndex(function (t) { return t.id === targetTaskId; });
+    if (fromIdx === -1 || toIdx === -1) return;
+    var task = col.tasks.splice(fromIdx, 1)[0];
+    toIdx = col.tasks.findIndex(function (t) { return t.id === targetTaskId; });
+    col.tasks.splice(toIdx, 0, task);
+    lastDroppedTaskId = task.id;
+    setBoard(board);
+    render();
+  }
+
+  function moveTask(taskId, fromColumnId, toColumnId) {
+    if (fromColumnId === toColumnId) return;
+    var board = getBoard();
+    var fromCol = board.find(function (c) { return c.id === fromColumnId; });
+    var toCol = board.find(function (c) { return c.id === toColumnId; });
+    if (!fromCol || !toCol) return;
+    var idx = fromCol.tasks.findIndex(function (t) { return t.id === taskId; });
+    if (idx === -1) return;
+    var task = fromCol.tasks.splice(idx, 1)[0];
+    toCol.tasks.push(task);
+    lastDroppedTaskId = task.id;
+    setBoard(board);
+    render();
+  }
+
+  function dropTask(ev, toColumnId) {
+    ev.preventDefault();
+    try {
+      var data = JSON.parse(ev.dataTransfer.getData("text/plain"));
+      moveTask(data.taskId, data.fromColumnId, toColumnId);
+    } catch (_) {}
+  }
+
+  function exportBoard() {
+    var data = getBoard();
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "kanban-board.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importBoard(ev) {
+    var file = ev.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var imported = JSON.parse(e.target.result);
+        if (Array.isArray(imported) && imported.every(function (col) { return col.name && Array.isArray(col.tasks); })) {
+          var normalized = imported.map(function (col) {
+            return {
+              id: col.id || id(),
+              name: col.name,
+              tasks: (col.tasks || []).map(function (t) { return normalizeTask(t); })
+            };
+          });
+          setBoard(normalized);
+          render();
+        } else {
+          alert("Invalid JSON: expected array of columns with name and tasks.");
+        }
+      } catch (err) {
+        alert("Error parsing JSON file.");
+      }
+      ev.target.value = "";
+    };
+    reader.readAsText(file);
+  }
+
+  document.getElementById("addColumnBtn").addEventListener("click", addColumn);
+  document.getElementById("exportBtn").addEventListener("click", exportBoard);
+  document.getElementById("importFile").addEventListener("change", importBoard);
+
+  function updateBoardSwitcher() {
+    var boards = getBoards();
+    var currentId = getCurrentBoardId();
+    var select = document.getElementById("boardSelect");
+    select.innerHTML = "";
+    for (var bid in boards) {
+      if (!boards[bid] || !boards[bid].columns) continue;
+      var opt = document.createElement("option");
+      opt.value = bid;
+      opt.textContent = boards[bid].name || "Board";
+      if (bid === currentId) opt.selected = true;
+      select.appendChild(opt);
+    }
+  }
+
+  document.getElementById("boardSelect").addEventListener("change", function () {
+    setCurrentBoardId(this.value);
+    render();
+  });
+
+  document.getElementById("addBoardBtn").addEventListener("click", function () {
+    var name = prompt("Board name?", "New Board");
+    if (!name) return;
+    var boards = getBoards();
+    var newId = id();
+    boards[newId] = { id: newId, name: name.trim() || "New Board", columns: JSON.parse(JSON.stringify(DEFAULT_COLUMNS)) };
+    setBoards(boards);
+    setCurrentBoardId(newId);
+    updateBoardSwitcher();
+    render();
+  });
+
+  document.getElementById("renameBoardBtn").addEventListener("click", function () {
+    var boards = getBoards();
+    var cid = getCurrentBoardId();
+    if (!boards[cid]) return;
+    var name = prompt("Rename board:", boards[cid].name || "Board");
+    if (name == null) return;
+    boards[cid].name = (name.trim() || "Board");
+    setBoards(boards);
+    updateBoardSwitcher();
+  });
+
+  document.getElementById("deleteBoardBtn").addEventListener("click", function () {
+    var boards = getBoards();
+    var cid = getCurrentBoardId();
+    var keys = Object.keys(boards).filter(function (k) { return boards[k] && boards[k].columns; });
+    if (keys.length <= 1) {
+      alert("You need at least one board.");
+      return;
+    }
+    showConfirm("Delete this board and all its columns and tasks?", function () {
+      delete boards[cid];
+      setBoards(boards);
+      var next = keys.filter(function (k) { return k !== cid; })[0] || keys[0];
+      setCurrentBoardId(next);
+      render();
+    });
+  });
+
+  function updateTagFilterBar() {
+    var board = getBoard();
+    var tagSet = {};
+    board.forEach(function (col) {
+      (col.tasks || []).forEach(function (task) {
+        (task.tags || []).forEach(function (tag) { tagSet[tag] = true; });
+      });
+    });
+    var container = document.getElementById("tagFilterChips");
+    if (!container) return;
+    container.innerHTML = "";
+    var allChip = document.createElement("button");
+    allChip.type = "button";
+    allChip.className = "tag-chip" + (filterTags.length === 0 ? " active" : "");
+    allChip.dataset.tag = "";
+    allChip.textContent = "All";
+    allChip.onclick = function () { filterTags = []; render(); };
+    container.appendChild(allChip);
+    Object.keys(tagSet).sort().forEach(function (tag) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      var isActive = filterTags.indexOf(tag) !== -1;
+      chip.className = "tag-chip" + (isActive ? " active" : "");
+      chip.dataset.tag = tag;
+      chip.textContent = tag;
+      chip.onclick = function () {
+        var idx = filterTags.indexOf(tag);
+        if (idx === -1) filterTags.push(tag);
+        else filterTags.splice(idx, 1);
+        render();
+      };
+      container.appendChild(chip);
+    });
+  }
+
+  function formatLocalDate(date) {
+    var year = date.getFullYear();
+    var month = String(date.getMonth() + 1).padStart(2, "0");
+    var day = String(date.getDate()).padStart(2, "0");
+    return year + "-" + month + "-" + day;
+  }
+
+  function getTodayDateStr() {
+    return formatLocalDate(new Date());
+  }
+
+  function getTomorrowDateStr() {
+    var date = new Date();
+    date.setDate(date.getDate() + 1);
+    return formatLocalDate(date);
+  }
+
+  function getYesterdayDateStr() {
+    var date = new Date();
+    date.setDate(date.getDate() - 1);
+    return formatLocalDate(date);
+  }
+
+  function parseDateValue(value) {
+    if (!value || typeof value !== "string") return "";
+    var normalized = value.trim().slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+    var parsed = new Date(value);
+    if (!isNaN(parsed.getTime())) return formatLocalDate(parsed);
+    return "";
+  }
+
+  function getDateFilterValue() {
+    if (dateFilter === "today") return getTodayDateStr();
+    if (dateFilter === "tomorrow") return getTomorrowDateStr();
+    if (dateFilter === "yesterday") return getYesterdayDateStr();
+    return parseDateValue(dateFilter);
+  }
+
+  function setDateFilter(value) {
+    dateFilter = value || "";
+    var input = document.getElementById("dateFilterInput");
+    if (input) {
+      input.value = dateFilter && dateFilter !== "today" && dateFilter !== "tomorrow" && dateFilter !== "yesterday" ? dateFilter : "";
+    }
+    updateDateFilterBar();
+    render();
+  }
+
+  function updateDateFilterBar() {
+    var container = document.getElementById("dateFilterChips");
+    if (!container) return;
+    container.innerHTML = "";
+    [
+      { label: "All", value: "" },
+      { label: "Today", value: "today" },
+      { label: "Tomorrow", value: "tomorrow" }
+    ].forEach(function (option) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tag-chip" + (dateFilter === option.value ? " active" : "");
+      btn.textContent = option.label;
+      btn.onclick = function () {
+        dateFilter = option.value;
+        document.getElementById("dateFilterInput").value = "";
+        updateDateFilterBar();
+        render();
+      };
+      container.appendChild(btn);
+    });
+  }
+
+  function updateScrollbar() {
+    var scrollWidth = boardEl.scrollWidth;
+    var clientWidth = boardScrollContainer.clientWidth;
+    if (scrollWidth <= clientWidth) {
+      boardScrollbarZone.classList.remove("visible");
+      return;
+    }
+    boardScrollbarZone.classList.add("visible");
+    var trackWidth = boardScrollbarTrack.offsetWidth;
+    var thumbWidth = Math.max(40, (clientWidth / scrollWidth) * trackWidth);
+    var maxLeft = trackWidth - thumbWidth;
+    var scrollLeft = boardScrollContainer.scrollLeft;
+    var ratio = scrollLeft / (scrollWidth - clientWidth);
+    boardScrollbarThumb.style.width = thumbWidth + "px";
+    boardScrollbarThumb.style.left = ratio * maxLeft + "px";
+  }
+
+  function scrollFromThumbPosition(thumbLeft) {
+    var trackWidth = boardScrollbarTrack.offsetWidth;
+    var thumbWidth = boardScrollbarThumb.offsetWidth;
+    var maxLeft = trackWidth - thumbWidth;
+    if (maxLeft <= 0) return;
+    var ratio = thumbLeft / maxLeft;
+    var scrollWidth = boardEl.scrollWidth;
+    var clientWidth = boardScrollContainer.clientWidth;
+    boardScrollContainer.scrollLeft = ratio * (scrollWidth - clientWidth);
+  }
+
+  boardScrollContainer.addEventListener("scroll", updateScrollbar);
+
+  boardScrollbarThumb.addEventListener("mousedown", function (e) {
+    e.preventDefault();
+    scrollbarDragging = true;
+    scrollbarDragStartX = e.clientX;
+    scrollbarDragStartScrollLeft = boardScrollbarThumb.offsetLeft;
+  });
+  document.addEventListener("mousemove", function (e) {
+    if (!scrollbarDragging) return;
+    var trackRect = boardScrollbarTrack.getBoundingClientRect();
+    var delta = e.clientX - scrollbarDragStartX;
+    var newLeft = scrollbarDragStartScrollLeft + delta;
+    var maxLeft = boardScrollbarTrack.offsetWidth - boardScrollbarThumb.offsetWidth;
+    newLeft = Math.max(0, Math.min(maxLeft, newLeft));
+    scrollFromThumbPosition(newLeft);
+  });
+  document.addEventListener("mouseup", function () {
+    scrollbarDragging = false;
+  });
+
+  boardScrollbarTrack.addEventListener("click", function (e) {
+    if (e.target === boardScrollbarThumb) return;
+    var trackRect = boardScrollbarTrack.getBoundingClientRect();
+    var clickX = e.clientX - trackRect.left;
+    var thumbWidth = boardScrollbarThumb.offsetWidth;
+    var newLeft = clickX - thumbWidth / 2;
+    var maxLeft = boardScrollbarTrack.offsetWidth - thumbWidth;
+    newLeft = Math.max(0, Math.min(maxLeft, newLeft));
+    scrollFromThumbPosition(newLeft);
+  });
+
+  function clearColumnDropTargets() {
+    boardEl.querySelectorAll(".column-drop-target").forEach(function (el) {
+      el.classList.remove("column-drop-target");
+    });
+  }
+
+  function render() {
+    applyBoardBackground();
+    updateBoardSwitcher();
+    updateTagFilterBar();
+    boardEl.innerHTML = "";
+    var board = getBoard();
+    board.forEach(function (col) {
+      var colEl = document.createElement("div");
+      colEl.className = "column";
+      colEl.dataset.columnId = col.id;
+      if (col.bodyColor) {
+        colEl.style.background = col.bodyColor;
+      }
+
+      if (reorderMode) {
+        colEl.draggable = true;
+        colEl.ondragstart = function (e) {
+          e.dataTransfer.setData("text/plain", "column:" + col.id);
+          e.dataTransfer.setData("application/x-kanban-column", col.id);
+          e.dataTransfer.effectAllowed = "move";
+          colEl.classList.add("reorder-dragging");
+        };
+        colEl.ondragend = function () {
+          colEl.classList.remove("reorder-dragging");
+          clearColumnDropTargets();
+        };
+        colEl.ondragover = function (e) {
+          e.preventDefault();
+          var isColumnDrag = e.dataTransfer.types.indexOf("application/x-kanban-column") !== -1;
+          if (isColumnDrag) {
+            e.dataTransfer.dropEffect = "move";
+            clearColumnDropTargets();
+            colEl.classList.add("column-drop-target");
+          }
+        };
+        colEl.ondragleave = function () { colEl.classList.remove("column-drop-target"); };
+        colEl.ondrop = function (e) {
+          e.preventDefault();
+          clearColumnDropTargets();
+          var dt = e.dataTransfer.getData("text/plain");
+          if (!dt || dt.indexOf("column:") !== 0) return;
+          var draggedId = dt.replace("column:", "");
+          if (draggedId !== col.id) reorderColumns(draggedId, col.id);
+        };
+      } else {
+        colEl.ondragover = function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        };
+        colEl.ondrop = function (e) {
+          dropTask(e, col.id);
+        };
+      }
+
+      var titleEl = document.createElement("h3");
+      var input = document.createElement("input");
+      input.value = col.name;
+      input.setAttribute("aria-label", "Column name");
+      input.onchange = function () {
+        updateColumnName(col.id, input.value.trim() || col.name);
+      };
+
+      if (col.headerColor) {
+        titleEl.style.background = col.headerColor;
+        titleEl.style.margin = "-12px -12px 8px -12px";
+        titleEl.style.padding = "8px 12px";
+        titleEl.style.borderRadius = "10px 10px 0 0";
+      }
+
+      var menuWrap = document.createElement("div");
+      menuWrap.className = "column-menu-wrap";
+      var menuBtn = document.createElement("button");
+      menuBtn.className = "column-menu-btn";
+      menuBtn.innerHTML = "⋯";
+      menuBtn.setAttribute("aria-label", "Column options");
+      menuBtn.type = "button";
+      var menuDropdown = document.createElement("div");
+      menuDropdown.className = "column-menu-dropdown";
+      var moveOpt = document.createElement("button");
+      moveOpt.type = "button";
+      moveOpt.className = "move-opt";
+      moveOpt.textContent = "Move";
+      moveOpt.onclick = function () { enterReorderMode(); };
+      var colorOpt = document.createElement("button");
+      colorOpt.type = "button";
+      colorOpt.textContent = "Colors";
+      colorOpt.onclick = function () {
+        closeColumnMenu();
+        openColumnColorModal(col);
+      };
+      var deleteOpt = document.createElement("button");
+      deleteOpt.type = "button";
+      deleteOpt.textContent = "Delete";
+      deleteOpt.onclick = function () {
+        closeColumnMenu();
+        showConfirm("Delete this column and all its tasks?", function () {
+          deleteColumn(col.id);
+        });
+      };
+      menuDropdown.appendChild(moveOpt);
+      menuDropdown.appendChild(colorOpt);
+      menuDropdown.appendChild(deleteOpt);
+      menuWrap.appendChild(menuBtn);
+      menuWrap.appendChild(menuDropdown);
+      menuBtn.onclick = function (e) {
+        e.stopPropagation();
+        if (columnMenuOpen === menuDropdown) {
+          closeColumnMenu();
+          return;
+        }
+        closeColumnMenu();
+        columnMenuOpen = menuDropdown;
+        menuDropdown.classList.add("open");
+      };
+
+      titleEl.appendChild(input);
+      titleEl.appendChild(menuWrap);
+      colEl.appendChild(titleEl);
+
+      var addBtn = document.createElement("button");
+      addBtn.className = "add-task-btn";
+      addBtn.textContent = "+ Add Task";
+      addBtn.onclick = function () { openPopup(col.id); };
+      colEl.appendChild(addBtn);
+
+      var tasksToShow = (col.tasks || []).filter(function (task) {
+        if (filterTags.length > 0) {
+          var taskTags = task.tags || [];
+          var hasMatch = filterTags.some(function (t) { return taskTags.indexOf(t) !== -1; });
+          if (!hasMatch) return false;
+        }
+        if (searchQuery && (task.text || "").toLowerCase().indexOf(searchQuery) === -1) return false;
+        if (dateFilter) {
+          var filterValue = getDateFilterValue();
+          if (!filterValue) return false;
+          var taskDate = parseDateValue(task.dueDate);
+          if (!taskDate || taskDate !== filterValue) return false;
+        }
+        return true;
+      });
+
+      tasksToShow.sort(function (a, b) {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      });
+
+      tasksToShow.forEach(function (task) {
+        var taskEl = document.createElement("div");
+        taskEl.className = "task" + (task.id === lastDroppedTaskId ? " task-just-dropped" : "");
+        taskEl.dataset.taskId = task.id;
+        taskEl.style.background = task.color || "#444";
+        taskEl.draggable = !reorderMode;
+        taskEl.setAttribute("aria-label", "Task: " + (task.text.slice(0, 50) + (task.text.length > 50 ? "…" : "")));
+
+        var textNode = document.createElement("div");
+        textNode.className = "task-text";
+        var isLong = (task.text || "").length > TASK_TEXT_TRUNCATE;
+        var isExpanded = expandedTaskId === task.id;
+        if (isLong && !isExpanded) {
+          textNode.textContent = (task.text || "").slice(0, TASK_TEXT_TRUNCATE);
+          var expandBtn = document.createElement("button");
+          expandBtn.type = "button";
+          expandBtn.className = "task-text-expand";
+          expandBtn.textContent = "Show more";
+          expandBtn.onclick = function (e) { e.stopPropagation(); expandedTaskId = task.id; render(); };
+          taskEl.appendChild(textNode);
+          taskEl.appendChild(expandBtn);
+        } else if (isLong && isExpanded) {
+          textNode.textContent = task.text;
+          var lessBtn = document.createElement("button");
+          lessBtn.type = "button";
+          lessBtn.className = "task-text-expand";
+          lessBtn.textContent = "Show less";
+          lessBtn.onclick = function (e) { e.stopPropagation(); expandedTaskId = null; render(); };
+          taskEl.appendChild(textNode);
+          taskEl.appendChild(lessBtn);
+        } else {
+          textNode.textContent = task.text || "";
+          taskEl.appendChild(textNode);
+        }
+
+        var tags = task.tags || [];
+        if (tags.length) {
+          var tagRow = document.createElement("div");
+          tagRow.className = "task-tags";
+          tags.forEach(function (tag) {
+            var sp = document.createElement("span");
+            sp.className = "task-tag";
+            sp.textContent = tag;
+            tagRow.appendChild(sp);
+          });
+          taskEl.appendChild(tagRow);
+        }
+        if (task.dueDate) {
+          var dueEl = document.createElement("div");
+          dueEl.className = "task-due";
+          var dueDate = task.dueDate;
+          var today = getTodayDateStr();
+          var tomorrow = getTomorrowDateStr();
+          var isOverdue = dueDate && dueDate < today;
+          if (isOverdue) dueEl.classList.add("overdue");
+          else if (dueDate === today) dueEl.classList.add("today");
+          else if (dueDate === tomorrow) dueEl.classList.add("tomorrow");
+          else dueEl.classList.add("upcoming");
+          dueEl.textContent = dueDate === today ? "Due today" : dueDate === tomorrow ? "Due tomorrow" : "Due " + dueDate;
+          dueEl.title = "Due date: " + dueDate;
+          taskEl.appendChild(dueEl);
+        }
+
+        var subtasks = task.subtasks || [];
+        if (subtasks.length) {
+          var clRow = document.createElement("div");
+          clRow.className = "task-checklist";
+          var doneCount = subtasks.filter(function (s) { return s.done; }).length;
+          subtasks.slice(0, 3).forEach(function (s) {
+            var item = document.createElement("div");
+            item.className = "task-checklist-item" + (s.done ? " done" : "");
+            item.innerHTML = "<input type=\"checkbox\" " + (s.done ? "checked" : "") + " /><span class=\"cl-text\">" + (s.text || "").replace(/</g, "&lt;") + "</span>";
+            item.querySelector("input").onclick = function (e) { e.stopPropagation(); };
+            item.querySelector("input").onchange = function () {
+              var b = getBoard();
+              var c = b.find(function (x) { return x.id === col.id; });
+              var t = c && c.tasks.find(function (x) { return x.id === task.id; });
+              if (t && t.subtasks) {
+                var idx = t.subtasks.findIndex(function (sub) { return (sub.id || "") === (s.id || ""); });
+                if (idx === -1) idx = subtasks.indexOf(s);
+                if (idx >= 0) {
+                  t.subtasks[idx] = { id: t.subtasks[idx].id, text: t.subtasks[idx].text, done: !t.subtasks[idx].done };
+                  setBoard(b);
+                  render();
+                }
+              }
+            };
+            clRow.appendChild(item);
+          });
+          if (subtasks.length > 3) {
+            var more = document.createElement("button");
+            more.type = "button";
+            more.className = "task-checklist-item task-more-btn";
+            more.style.fontSize = "11px";
+            more.style.opacity = "0.9";
+            more.style.background = "none";
+            more.style.border = "none";
+            more.style.color = "#7c9cff";
+            more.style.cursor = "pointer";
+            more.style.padding = "2px 0";
+            more.textContent = "+" + (subtasks.length - 3) + " more";
+            more.onclick = function (e) { e.stopPropagation(); openPopup(col.id, task); };
+            clRow.appendChild(more);
+          }
+          taskEl.appendChild(clRow);
+        }
+
+        if (!reorderMode) {
+          taskEl.ondragstart = function (e) {
+            e.dataTransfer.setData("text/plain", JSON.stringify({ taskId: task.id, fromColumnId: col.id }));
+            e.dataTransfer.effectAllowed = "move";
+          };
+          taskEl.ondragover = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "move";
+          };
+          taskEl.ondrop = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+              var data = JSON.parse(e.dataTransfer.getData("text/plain"));
+              if (data.fromColumnId === col.id) reorderTasksInColumn(col.id, data.taskId, task.id);
+              else moveTask(data.taskId, data.fromColumnId, col.id);
+            } catch (_) {}
+          };
+        }
+
+        var menuWrap = document.createElement("div");
+        menuWrap.className = "task-menu-wrap";
+        var menuBtn = document.createElement("button");
+        menuBtn.className = "task-menu-btn";
+        menuBtn.innerHTML = "⋯";
+        menuBtn.type = "button";
+        menuBtn.setAttribute("aria-label", "Task options");
+        var menuDropdown = document.createElement("div");
+        menuDropdown.className = "task-menu-dropdown";
+        var editOpt = document.createElement("button");
+        editOpt.type = "button";
+        editOpt.textContent = "Edit";
+        editOpt.onclick = function () { closeTaskMenu(); openPopup(col.id, task); };
+        var dupOpt = document.createElement("button");
+        dupOpt.type = "button";
+        dupOpt.className = "dup-opt";
+        dupOpt.textContent = "Duplicate";
+        dupOpt.onclick = function () { closeTaskMenu(); duplicateTask(col.id, task.id); };
+        var delOpt = document.createElement("button");
+        delOpt.type = "button";
+        delOpt.className = "del-opt";
+        delOpt.textContent = "Delete";
+        delOpt.onclick = function () {
+          closeTaskMenu();
+          showConfirm("Delete this task?", function () { deleteTask(col.id, task.id); });
+        };
+        menuDropdown.appendChild(editOpt);
+        menuDropdown.appendChild(dupOpt);
+        menuDropdown.appendChild(delOpt);
+        menuWrap.appendChild(menuBtn);
+        menuWrap.appendChild(menuDropdown);
+        menuBtn.onclick = function (e) {
+          e.stopPropagation();
+          if (taskMenuOpen === menuDropdown) { closeTaskMenu(); return; }
+          closeTaskMenu();
+          taskMenuOpen = menuDropdown;
+          menuDropdown.classList.add("open");
+        };
+        taskEl.appendChild(menuWrap);
+        colEl.appendChild(taskEl);
+      });
+
+      boardEl.appendChild(colEl);
+    });
+    if (lastDroppedTaskId) {
+      setTimeout(function () {
+        lastDroppedTaskId = null;
+        var el = document.querySelector(".task-just-dropped");
+        if (el) el.classList.remove("task-just-dropped");
+      }, 400);
+    }
+    requestAnimationFrame(function () {
+      updateScrollbar();
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      if (popup.classList.contains("show")) { closePopup(); e.preventDefault(); return; }
+      if (confirmModal.classList.contains("show")) { hideConfirm(); e.preventDefault(); return; }
+      if (document.getElementById("backgroundModal").classList.contains("show")) {
+        document.getElementById("backgroundModal").classList.remove("show");
+        e.preventDefault();
+        return;
+      }
+      var colModal = document.getElementById("columnColorModal");
+      if (colModal && colModal.classList.contains("show")) {
+        closeColumnColorModal();
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "n" || e.key === "N") {
+      var active = document.activeElement;
+      var isInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
+      if (isInput || popup.classList.contains("show") || confirmModal.classList.contains("show")) return;
+      e.preventDefault();
+      var board = getBoard();
+      if (board.length) {
+        var firstCol = board[0];
+        openPopup(firstCol.id);
+      }
+    }
+  });
+
+  applyAccent();
+  setDensity(getDensity());
+  applyShadowStyle();
+  applyFontSize();
+  applyBoardBackground();
+  renderAccentOptions();
+  updateDateFilterBar();
+  var densityVal = getDensity();
+  document.getElementById("densityComfortable").classList.toggle("active", densityVal === "comfortable");
+  document.getElementById("densityCompact").classList.toggle("active", densityVal === "compact");
+  var shadowVal = getShadowStyle();
+  document.getElementById("shadowDark").classList.toggle("active", shadowVal === "dark");
+  document.getElementById("shadowAccent").classList.toggle("active", shadowVal === "accent");
+  document.getElementById("shadowNone").classList.toggle("active", shadowVal === "none");
+  var fontVal = getFontSizeSetting();
+  document.getElementById("fontSmall").classList.toggle("active", fontVal === "small");
+  document.getElementById("fontNormal").classList.toggle("active", fontVal === "normal");
+  document.getElementById("fontLarge").classList.toggle("active", fontVal === "large");
+
+  render();
+  var resizeObs = typeof ResizeObserver !== "undefined"
+    ? new ResizeObserver(function () { updateScrollbar(); })
+    : null;
+  if (resizeObs) {
+    resizeObs.observe(boardEl);
+    resizeObs.observe(boardScrollContainer);
+  }
+})();
+  </script>
+</body>
+</html>
