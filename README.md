@@ -97,4 +97,4 @@ Plain HTML, CSS, and JavaScript. No frameworks, no dependencies, no build tools.
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome. Since it's a single file, the easiest way to contribute is to open `index.html`, make your change, and test it directly in a browser before submitting a PR.
+Issues and pull requests are welcome. Since it's a single file, the easiest way to contribute is to open `index.html`, make your change, and test it directly in a browser before submitting a PR. Good luck with the 2600+ line of code. :)
